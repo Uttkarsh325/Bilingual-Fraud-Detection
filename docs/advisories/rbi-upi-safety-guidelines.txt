@@ -1,0 +1,21 @@
+Title: RBI Advisory on Safe Use of UPI and Digital Payments
+Source: Reserve Bank of India (RBI)
+Source Type: rbi_advisory
+
+ADVISORY ON SAFE USE OF UNIFIED PAYMENTS INTERFACE (UPI)
+
+1. NEVER share your UPI PIN, OTP, or bank account details with anyone — including people claiming to be from your bank, RBI, NPCI, or any government authority. Legitimate institutions will never ask for your PIN or OTP.
+
+2. COLLECT REQUEST FRAUD: Scammers send UPI collect requests claiming to give you money (refund, prize, cashback). Approving these requests DEBITS your account, not credits it. Never approve an unexpected collect request.
+
+3. QR CODE SCAMS: Scanning a QR code and entering your UPI PIN transfers money OUT of your account. A QR code cannot be used to receive money — only to send it. If someone asks you to scan a QR code to receive a refund or prize, it is a scam.
+
+4. VERIFY BEFORE PAYING: Always verify the recipient's UPI ID or mobile number before confirming any payment. Check the recipient name shown by your UPI app after entering the ID.
+
+5. PHISHING LINKS: Do not click on links in SMS, WhatsApp, or email claiming to be from your bank, UPI app, or NPCI. These links may redirect to fake websites designed to steal your login credentials.
+
+6. REPORT FRAUD IMMEDIATELY: If you suspect fraud, immediately contact your bank's customer care. Report cyber fraud at cybercrime.gov.in or call the national helpline 1930.
+
+7. SECURE YOUR DEVICE: Keep your UPI app and phone OS updated. Use a strong device lock. Never install screen-sharing or remote-access apps (AnyDesk, TeamViewer) at the request of someone claiming to be from your bank.
+
+8. FAKE CUSTOMER CARE: Be wary of customer care numbers found through search engines — scammers create fake listings. Always use the number on the back of your debit card or the bank's official website.

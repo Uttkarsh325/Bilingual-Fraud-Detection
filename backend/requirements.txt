@@ -1,0 +1,46 @@
+# ─── Web framework ────────────────────────────────────────────────────────────
+fastapi>=0.111
+uvicorn[standard]>=0.30
+python-multipart>=0.0.9
+
+# ─── LangChain / LangGraph orchestration ──────────────────────────────────────
+langchain>=0.3.0
+langchain-core>=0.3.0
+langchain-community>=0.3.0
+langgraph>=0.2.0
+langchain-groq>=0.2.0
+
+# ─── Vector store ─────────────────────────────────────────────────────────────
+qdrant-client>=1.12.0
+langchain-qdrant>=0.1.4
+
+# ─── Embeddings ───────────────────────────────────────────────────────────────
+sentence-transformers>=3.1.0
+langchain-huggingface>=0.1.0
+
+# ─── Memory layer ─────────────────────────────────────────────────────────────
+# If the installed mem0 version breaks, the memory layer degrades gracefully
+# (falls back to an in-process store) — the rest of the app keeps working.
+mem0ai>=0.1.0
+
+# ─── Classification (zero-shot NLI via transformers; torch is pre-installed) ──
+transformers>=4.46.0
+numpy>=2.1.0
+
+# ─── AWS S3 ───────────────────────────────────────────────────────────────────
+boto3>=1.35.0
+
+# ─── HTTP client (Sarvam AI calls) ────────────────────────────────────────────
+httpx>=0.27.0
+
+# ─── Auth / JWT ───────────────────────────────────────────────────────────────
+python-jose[cryptography]>=3.3.0
+
+# ─── Config / env ─────────────────────────────────────────────────────────────
+pydantic>=2.8.0
+pydantic-settings>=2.4.0
+python-dotenv>=1.0.0
+
+# ─── Logging / utils ─────────────────────────────────────────────────────────
+structlog>=24.4.0
+tenacity>=8.5.0

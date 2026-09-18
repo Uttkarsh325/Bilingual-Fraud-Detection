@@ -1,0 +1,26 @@
+Title: NPCI Advisory on UPI Fraud Prevention
+Source: National Payments Corporation of India (NPCI)
+Source Type: npci_advisory
+
+NPCI ADVISORY — COMMON UPI FRAUD PATTERNS AND HOW TO STAY SAFE
+
+UPI COLLECT SCAM:
+Fraudsters send a collect request on UPI apps (Google Pay, PhonePe, Paytm, BHIM) pretending it is needed to "send" you money. When you approve and enter your PIN, money is debited from your account. NPCI warns: you NEVER need to enter your PIN to receive money.
+
+SCREEN SHARING FRAUD:
+Scammers ask victims to install screen-sharing apps (AnyDesk, QuickSupport) to "help" with a transaction. Once installed, the fraudster can see your OTPs, PINs, and bank credentials in real time. Never share your screen with strangers.
+
+SIM SWAP FRAUD:
+Criminals contact your mobile operator impersonating you to get your SIM replaced. Once they have the new SIM, they intercept OTPs and access your banking accounts. Signs of SIM swap: your phone suddenly loses mobile network connectivity. Contact your operator immediately.
+
+FAKE REFUND FRAUD:
+A caller claims there was an erroneous debit on your account and offers a refund. They ask for your UPI ID and then send a collect request. Entering your PIN to "receive" the refund actually sends them money. Banks and NPCI never process refunds via UPI collect requests.
+
+INVESTMENT FRAUD VIA UPI:
+Fraudsters on WhatsApp and Telegram groups promise guaranteed high returns (2%–5% daily) on "investments" processed via UPI. Once money is transferred, the fraudster disappears. NPCI advises: no legitimate investment platform guarantees daily returns.
+
+REPORTING CHANNELS:
+- National Cybercrime Portal: cybercrime.gov.in
+- Cybercrime Helpline: 1930
+- Your bank's 24x7 fraud helpline (number on the back of your card)
+- UPI app in-built dispute resolution

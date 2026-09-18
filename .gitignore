@@ -1,0 +1,44 @@
+# Environment — never commit real keys
+.env
+.env.local
+.env.production
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+backend/venv/
+backend/.venv/
+ingestion/venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Node / Next.js
+node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+
+# Vector store / model cache
+*.faiss
+*.index
+sentence_transformers/
+
+# AWS / secrets
+*.pem
+*.key
+credentials
+
+# IDE
+.idea/
+.vscode/settings.json
+*.swp
+
+# Logs
+*.log
+logs/
+
+# Docker volumes
+qdrant_data/

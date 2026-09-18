@@ -1,0 +1,47 @@
+Title: Known Scam Message Patterns and Indicators
+Source: FraudGuard AI Compiled Pattern Catalogue
+Source Type: scam_pattern
+
+PATTERN CATALOGUE — COMMON FRAUDULENT MESSAGES IN INDIA
+
+--- PATTERN 1: UPI Collect / QR Code Scam ---
+Indicators: "scan this QR", "approve to receive", "collect request pending", "click to accept payment"
+Risk: HIGH
+Example: "Your refund of Rs.2500 is ready. Please scan this QR code and enter your UPI PIN to receive it."
+Why it's a scam: Entering your UPI PIN on a collect request or after scanning a QR code sends money — it never receives it.
+
+--- PATTERN 2: OTP Sharing Scam ---
+Indicators: "share OTP", "tell me OTP", "enter OTP on our behalf", "verification code", "confirm by sharing"
+Risk: HIGH
+Example: "This is SBI customer care. Your account is at risk. Please share the OTP sent to your number to secure it."
+Why it's a scam: OTPs authorize transactions. Sharing it lets the fraudster complete a transaction from your account.
+
+--- PATTERN 3: KYC Phishing ---
+Indicators: "KYC expired", "account blocked", "update KYC", "click link", "re-verify", "complete KYC now"
+Risk: HIGH
+Example: "Your Paytm KYC has expired. Click here to complete re-verification or your account will be suspended: [link]"
+Why it's a scam: The link leads to a fake site that steals your credentials. Your bank communicates KYC via official channels, not random SMS links.
+
+--- PATTERN 4: Fake Lottery / Prize ---
+Indicators: "you have won", "lucky draw", "congratulations", "claim your reward", "KBC winner", "Amazon prize"
+Risk: MEDIUM
+Example: "Congratulations! You have been selected as the winner of Rs.25 Lakh in KBC Lottery 2024. To claim, contact: [number]"
+Why it's a scam: KBC and Amazon do not contact random people with prize announcements. These scammers will eventually ask for a "processing fee" to release the prize.
+
+--- PATTERN 5: Investment / Crypto Scam ---
+Indicators: "guaranteed returns", "daily profit", "Telegram group", "join our investment channel", "double your money", "trading tips"
+Risk: HIGH
+Example: "Join our premium Telegram group for guaranteed 3% daily returns on crypto investments. Limited slots. Message now."
+Why it's a scam: No investment guarantees fixed daily returns. These are Ponzi schemes or advance-fee frauds.
+
+--- PATTERN 6: Fake Job Offer ---
+Indicators: "work from home", "earn Rs.5000/day", "part time", "no experience needed", "pay registration fee", "advance deposit"
+Risk: MEDIUM
+Example: "Earn Rs.8000 daily working from home! Data entry job. No experience needed. Pay Rs.500 registration fee to start."
+Why it's a scam: Legitimate employers never ask for upfront fees. After paying, the job and the scammer vanish.
+
+--- PATTERN 7: Voice Phishing (Vishing) ---
+Indicators: "officer from RBI", "TRAI notice", "arrest warrant", "police case", "disconnect your number", "pay fine immediately"
+Risk: HIGH
+Example: "I am calling from TRAI. Your mobile number has been used for illegal activities. Pay a fine of Rs.3000 now or face arrest."
+Why it's a scam: Government agencies do not demand immediate payment over phone calls. This is designed to create panic and extract money.

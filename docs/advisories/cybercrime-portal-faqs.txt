@@ -1,0 +1,26 @@
+Title: National Cybercrime Reporting Portal — FAQs on Financial Fraud
+Source: cybercrime.gov.in
+Source Type: cybercrime_faq
+
+FREQUENTLY ASKED QUESTIONS — FINANCIAL CYBER FRAUD
+
+Q: I received a message saying my KYC is incomplete and my account will be blocked. What should I do?
+A: This is a very common phishing scam. Legitimate banks send KYC update notices via registered post or through their official app/internet banking portal — never via random SMS links or WhatsApp messages. Do NOT click the link. Visit your bank branch or official website directly. Report the message to your bank and at cybercrime.gov.in.
+
+Q: Someone called claiming to be from TRAI and said my mobile number will be disconnected for illegal activity. Is this real?
+A: This is a vishing (voice phishing) scam. TRAI does not make such calls. These callers try to extract money or personal information. Hang up immediately. Report the number to TRAI's DND portal or file a complaint at cybercrime.gov.in.
+
+Q: I accidentally approved a UPI collect request and lost money. What can I do?
+A: 1. Immediately call your bank's fraud helpline. 2. Raise a dispute in your UPI app under the transaction. 3. File a complaint at cybercrime.gov.in or call 1930. Provide the transaction ID, amount, date/time, and the fraudster's UPI ID. Act within 24 hours for the best chance of recovery.
+
+Q: I got a WhatsApp message with a link saying I won an Amazon prize. Is it real?
+A: No. Amazon, Flipkart, and other legitimate companies do not distribute prizes via WhatsApp links to random users. These are phishing attacks designed to steal your personal details or install malware. Do not click the link. Block and report the sender.
+
+Q: What is the national cybercrime helpline number?
+A: 1930. Available 24x7. You can also report online at cybercrime.gov.in.
+
+Q: Someone is impersonating a bank officer and asking for my card number and CVV. What should I do?
+A: Hang up. No bank employee will ever ask for your full card number, CVV, expiry date, PIN, or OTP over the phone. Call your bank's official number immediately to report the incident, and lock your card via your banking app as a precaution.
+
+Q: I installed an app someone sent me and now I see unknown transactions. What should I do?
+A: 1. Immediately transfer funds to another account or ask your bank to freeze your account. 2. Uninstall the suspicious app. 3. Factory-reset your device if possible. 4. Change all banking passwords from a different, clean device. 5. File a complaint at cybercrime.gov.in with the app name and transaction details.
