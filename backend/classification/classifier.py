@@ -1,26 +1,30 @@
 """
-Scam Classifier — two-tier approach:
+Scam Classifier for FraudGuard AI.
 
-Tier 1 (fast, no model needed):
-  Rule-based keyword matcher using the scam taxonomy.
-  Returns immediately if a category is matched with high confidence.
+Tiered Classification Architecture:
+  Tier 1 (Trained ML Model - Production):
+    Loads serialized ML models (TF-IDF + Logistic Regression or XGBoost) trained on
+    the Indian financial fraud taxonomy dataset. Returns predicted category, calibrated
+    probability confidence, and detected trigger indicators.
 
-Tier 2 (higher accuracy, optional):
-  Zero-shot classification via a HuggingFace NLI model.
-  Falls back to rule-based result if the model isn't loaded.
+  Tier 2 (Zero-shot NLI Model - Optional Fallback):
+    HuggingFace zero-shot NLI pipeline when torch/transformers are loaded.
 
-The classifier is designed to be extended with a fine-tuned model
-(trained on the Kaggle SMS-Spam Collection + labelled Indian scam SMS data).
+  Tier 3 (Rule-Based Matcher - Resilient Fallback):
+    Fast regex and keyword matcher ensuring the service never fails even in zero-dependency environments.
 """
+
+from pathlib import Path
 import re
-from functools import lru_cache
 from typing import Optional
+import joblib
+import numpy as np
 
+from classification.taxonomy import CATEGORY_TO_DEF, SCAM_TAXONOMY, ScamDefinition
 from core.logging import logger
-from core.models import ScamClassification, ScamCategory, RiskLevel
-from classification.taxonomy import SCAM_TAXONOMY, CATEGORY_TO_DEF, ScamDefinition
+from core.models import RiskLevel, ScamCategory, ScamClassification
 
-# ─── Risk level → RiskLevel enum ─────────────────────────────────────────────
+# ─── Risk level mapping ───────────────────────────────────────────────────────
 
 _RISK_MAP = {
     "high": RiskLevel.HIGH,
@@ -28,6 +32,36 @@ _RISK_MAP = {
     "low": RiskLevel.LOW,
     "safe": RiskLevel.SAFE,
 }
+
+MODELS_DIR = Path(__file__).resolve().parent.parent.parent / "models"
+
+
+def _extract_indicators(text: str, category: Optional[str] = None) -> list[str]:
+    """Extract matched trigger keywords and risk indicators from text."""
+    text_lower = text.lower()
+    matched = []
+
+    # Check category specific keywords first
+    if category and category in CATEGORY_TO_DEF:
+        defn = CATEGORY_TO_DEF[category]
+        for kw in defn.keywords:
+            if re.search(r"\b" + re.escape(kw) + r"\b", text_lower):
+                matched.append(kw)
+
+    # General financial urgency indicators
+    urgency_patterns = [
+        ("urgent", r"\b(urgent|immediately|immediately|expire|blocked|suspend|today|24 hours)\b"),
+        ("credential_demand", r"\b(otp|pin|password|cvv|aadhaar|pan)\b"),
+        ("external_link", r"(https?://\S+|bit\.ly/\S+|tinyurl\.com/\S+)"),
+        ("unrealistic_money", r"\b(lottery|winner|jackpot|guaranteed return|double money)\b"),
+        ("authority_impersonation", r"\b(police|cbi|rbi|trai|customs|inspector)\b"),
+    ]
+
+    for label, pat in urgency_patterns:
+        if re.search(pat, text_lower) and label not in matched:
+            matched.append(label)
+
+    return list(dict.fromkeys(matched))  # Deduplicate preserving order
 
 
 def _build_result(defn: ScamDefinition, confidence: float, indicators: list[str]) -> ScamClassification:
@@ -40,75 +74,104 @@ def _build_result(defn: ScamDefinition, confidence: float, indicators: list[str]
     )
 
 
-# ─── Tier 1: Rule-Based ───────────────────────────────────────────────────────
+# ─── Tier 1: Trained Machine Learning Classifier ──────────────────────────────
 
-def _keyword_score(text: str, defn: ScamDefinition) -> tuple[float, list[str]]:
-    """
-    Returns (normalised_score, matched_keywords).
-    Score = matched / total_keywords, capped between 0 and 1.
-    """
-    text_lower = text.lower()
-    matched = [kw for kw in defn.keywords if re.search(r'\b' + re.escape(kw) + r'\b', text_lower)]
-    if not matched:
-        return 0.0, []
-    score = min(1.0, 0.4 + (len(matched) / max(len(defn.keywords), 1)) * 0.6)
-    return score, matched
+class TrainedScamClassifier:
+    """Loads and serves inference from the trained model artifacts in models/."""
+
+    _model = None
+    _model_type = None
+
+    @classmethod
+    def get_model(cls):
+        if cls._model is None:
+            # 1. Try Baseline TF-IDF (Fastest, ~99% accuracy on benchmark)
+            baseline_path = MODELS_DIR / "baseline_tfidf.joblib"
+            if baseline_path.exists():
+                try:
+                    cls._model = joblib.load(baseline_path)
+                    cls._model_type = "baseline_tfidf"
+                    logger.info("classifier.loaded_trained_baseline", path=str(baseline_path))
+                    return cls._model
+                except Exception as exc:
+                    logger.warning("classifier.load_baseline_failed", error=str(exc))
+
+            # 2. Try Advanced XGBoost
+            advanced_path = MODELS_DIR / "advanced_xgboost.joblib"
+            if advanced_path.exists():
+                try:
+                    cls._model = joblib.load(advanced_path)
+                    cls._model_type = "advanced_xgboost"
+                    logger.info("classifier.loaded_trained_advanced", path=str(advanced_path))
+                    return cls._model
+                except Exception as exc:
+                    logger.warning("classifier.load_advanced_failed", error=str(exc))
+
+        return cls._model
+
+    @classmethod
+    def classify(cls, text: str) -> Optional[ScamClassification]:
+        model = cls.get_model()
+        if model is None:
+            return None
+
+        try:
+            if cls._model_type == "baseline_tfidf":
+                # Scikit-learn Pipeline
+                pred_category = model.predict([text])[0]
+                proba = model.predict_proba([text])[0]
+                confidence = float(np.max(proba))
+
+            elif cls._model_type == "advanced_xgboost":
+                # XGBoost Pipeline with mapping
+                pipeline = model["pipeline"]
+                idx_to_label = model["idx_to_label"]
+                pred_idx = pipeline.predict([text])[0]
+                pred_category = idx_to_label[pred_idx]
+                proba = pipeline.predict_proba([text])[0]
+                confidence = float(np.max(proba))
+            else:
+                return None
+
+            defn = CATEGORY_TO_DEF.get(pred_category)
+            if defn is None:
+                return None
+
+            indicators = _extract_indicators(text, pred_category)
+
+            # Calibrate confidence: if key domain indicators are present, fuse ML probability with indicator strength
+            if indicators and defn.category != "benign":
+                indicator_weight = min(0.95, 0.45 + (len(indicators) / max(len(defn.keywords), 1)) * 0.55)
+                confidence = max(confidence, indicator_weight)
+
+            return _build_result(defn, confidence, indicators)
+
+        except Exception as exc:
+            logger.warning("classifier.trained_inference_error", error=str(exc))
+            return None
 
 
-def rule_based_classify(text: str) -> ScamClassification:
-    """Fast keyword-based classification."""
-    best_score = 0.0
-    best_defn: Optional[ScamDefinition] = None
-    best_indicators: list[str] = []
-
-    for defn in SCAM_TAXONOMY:
-        score, indicators = _keyword_score(text, defn)
-        if score > best_score:
-            best_score = score
-            best_defn = defn
-            best_indicators = indicators
-
-    if best_defn is None or best_score < 0.2:
-        return ScamClassification(
-            category=ScamCategory.UNKNOWN,
-            confidence=0.0,
-            risk_level=RiskLevel.LOW,
-            label_display="Unknown / Review Needed",
-            indicators=[],
-        )
-
-    return _build_result(best_defn, best_score, best_indicators)
-
-
-# ─── Tier 2: Zero-Shot NLI Classifier ────────────────────────────────────────
+# ─── Tier 2: Zero-Shot NLI Classifier (Optional) ──────────────────────────────
 
 class ZeroShotScamClassifier:
-    """
-    Uses a HuggingFace NLI model for zero-shot text classification.
-    Loaded lazily — if torch or transformers are not installed the classifier
-    silently falls back to rule-based results without crashing.
-    """
+    """Uses HuggingFace NLI model for zero-shot text classification if available."""
 
     _pipeline = None
-    _CANDIDATE_LABELS = [d.label for d in SCAM_TAXONOMY]
+    _CANDIDATE_LABELS = [d.label for d in SCAM_TAXONOMY if d.category != "benign"]
 
     @classmethod
     def _get_pipeline(cls):
         if cls._pipeline is None:
             try:
-                import torch  # noqa: F401  — check availability first
                 from transformers import pipeline as hf_pipeline
                 cls._pipeline = hf_pipeline(
                     "zero-shot-classification",
                     model="cross-encoder/nli-MiniLM2-L6-H768",
-                    device=-1,  # CPU
+                    device=-1,
                 )
                 logger.info("classifier.zeroshot_loaded")
-            except ImportError:
-                logger.warning("classifier.zeroshot_unavailable", reason="torch/transformers not installed — using rule-based only")
-                cls._pipeline = False  # Mark as permanently unavailable
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("classifier.zeroshot_failed", error=str(exc))
+            except Exception as exc:
+                logger.warning("classifier.zeroshot_unavailable", reason=str(exc))
                 cls._pipeline = False
         return cls._pipeline
 
@@ -119,45 +182,72 @@ class ZeroShotScamClassifier:
             return None
 
         try:
-            result = pipe(
-                text[:512],
-                candidate_labels=cls._CANDIDATE_LABELS,
-                multi_label=False,
-            )
+            result = pipe(text[:512], candidate_labels=cls._CANDIDATE_LABELS, multi_label=False)
             top_label: str = result["labels"][0]
             top_score: float = result["scores"][0]
 
-            # Map label back to category definition
-            defn = next(
-                (d for d in SCAM_TAXONOMY if d.label == top_label), None
-            )
+            defn = next((d for d in SCAM_TAXONOMY if d.label == top_label), None)
             if defn is None or top_score < 0.3:
                 return None
 
-            return _build_result(defn, top_score, [])
-        except Exception as exc:  # noqa: BLE001
+            indicators = _extract_indicators(text, defn.category)
+            return _build_result(defn, top_score, indicators)
+        except Exception as exc:
             logger.warning("classifier.zeroshot_error", error=str(exc))
             return None
+
+
+# ─── Tier 3: Rule-Based Fallback ──────────────────────────────────────────────
+
+def rule_based_classify(text: str) -> ScamClassification:
+    """Keyword-based classification fallback."""
+    text_lower = text.lower()
+    best_score = 0.0
+    best_defn: Optional[ScamDefinition] = None
+    best_indicators: list[str] = []
+
+    for defn in SCAM_TAXONOMY:
+        matched = [kw for kw in defn.keywords if re.search(r"\b" + re.escape(kw) + r"\b", text_lower)]
+        if matched:
+            score = min(1.0, 0.4 + (len(matched) / max(len(defn.keywords), 1)) * 0.6)
+            if score > best_score:
+                best_score = score
+                best_defn = defn
+                best_indicators = matched
+
+    if best_defn is None or best_score < 0.2:
+        return ScamClassification(
+            category=ScamCategory.UNKNOWN,
+            confidence=0.0,
+            risk_level=RiskLevel.LOW,
+            label_display="Unknown / Needs Review",
+            indicators=_extract_indicators(text),
+        )
+
+    all_indicators = _extract_indicators(text, best_defn.category)
+    return _build_result(best_defn, best_score, all_indicators)
 
 
 # ─── Public Interface ─────────────────────────────────────────────────────────
 
 def classify_text(text: str, use_ml: bool = True) -> ScamClassification:
     """
-    Classify `text` into a scam category.
+    Main classification function called by API and LangGraph pipeline.
 
-    Strategy:
-    1. Run rule-based classifier.
-    2. If ML is enabled AND rule-based confidence is low (<0.55), try zero-shot.
-    3. Return whichever has higher confidence.
+    Execution Strategy:
+      1. Try the trained production ML model (TF-IDF / XGBoost).
+      2. If trained model is unavailable, try Zero-Shot NLI.
+      3. If ML fails or is disabled, fall back to rule-based classification.
     """
-    rule_result = rule_based_classify(text)
-
-    if use_ml and rule_result.confidence < 0.55:
-        ml_result = ZeroShotScamClassifier.classify(text)
-        if ml_result and ml_result.confidence > rule_result.confidence:
-            # Merge indicators from rule-based into ML result
-            ml_result.indicators = rule_result.indicators
+    if use_ml:
+        ml_result = TrainedScamClassifier.classify(text)
+        if ml_result is not None:
             return ml_result
 
-    return rule_result
+        # Fallback to zero-shot if trained model missing
+        zs_result = ZeroShotScamClassifier.classify(text)
+        if zs_result is not None:
+            return zs_result
+
+    # Final fallback
+    return rule_based_classify(text)

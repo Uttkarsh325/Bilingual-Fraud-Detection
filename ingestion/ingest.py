@@ -31,13 +31,12 @@ from s3_uploader import upload_advisories
 # Unknown files get generic metadata derived from their filename.
 
 KNOWN_METADATA: dict[str, dict] = {
-    # Add known advisory filenames here, e.g.:
-    # "rbi-upi-safety-2024.pdf": {
-    #     "title": "RBI UPI Safety Guidelines 2024",
-    #     "source_type": "rbi_advisory",
-    #     "source_url": "https://rbi.org.in/...",
-    #     "scam_category": "upi_collect_scam",
-    # },
+    "English BEAWARE.pdf": {
+        "title": "RBI BE(A)WARE Financial Fraud Awareness Guidelines",
+        "source_type": "rbi_advisory",
+        "source_url": None,
+        "scam_category": "financial_fraud_awareness",
+    },
 }
 
 

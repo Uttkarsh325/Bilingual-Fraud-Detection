@@ -121,6 +121,17 @@ SCAM_TAXONOMY: list[ScamDefinition] = [
         ],
         description="Fraudulent loan apps or offers with hidden charges.",
     ),
+    ScamDefinition(
+        category="benign",
+        label="Legitimate / Normal Message",
+        risk_level="safe",
+        keywords=[
+            "debited", "credited", "available balance", "statement",
+            "order delivered", "swiggy", "zomato", "irctc", "meeting",
+            "delivered", "balance is rs", "paid to",
+        ],
+        description="Authentic transactional, personal, or non-fraudulent messages.",
+    ),
 ]
 
 # Lookup maps

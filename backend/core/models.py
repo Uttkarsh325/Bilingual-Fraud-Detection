@@ -19,6 +19,7 @@ class ScamCategory(str, Enum):
     INVESTMENT_SCAM = "investment_scam"
     OTP_SCAM = "otp_scam"
     FAKE_REFUND = "fake_refund"
+    BENIGN = "benign"
     UNKNOWN = "unknown"
 
 

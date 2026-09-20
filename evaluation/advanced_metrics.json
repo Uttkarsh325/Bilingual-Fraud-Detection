@@ -1,0 +1,90 @@
+{
+  "model_name": "Advanced (FeatureUnion + XGBoost)",
+  "test_samples": 1924,
+  "accuracy": 0.9984,
+  "macro_precision": 0.9985,
+  "macro_recall": 0.9984,
+  "macro_f1": 0.9984,
+  "weighted_f1": 0.9984,
+  "per_class": {
+    "benign": {
+      "precision": 0.9954954954954955,
+      "recall": 1.0,
+      "f1-score": 0.9977426636568849,
+      "support": 221.0
+    },
+    "fake_refund": {
+      "precision": 1.0,
+      "recall": 0.9875776397515528,
+      "f1-score": 0.99375,
+      "support": 161.0
+    },
+    "investment_scam": {
+      "precision": 0.9877300613496932,
+      "recall": 1.0,
+      "f1-score": 0.9938271604938271,
+      "support": 161.0
+    },
+    "job_offer_scam": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 161.0
+    },
+    "loan_scam": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 162.0
+    },
+    "lottery_prize": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 162.0
+    },
+    "otp_scam": {
+      "precision": 1.0,
+      "recall": 0.9947916666666666,
+      "f1-score": 0.9973890339425587,
+      "support": 192.0
+    },
+    "phishing_link": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 202.0
+    },
+    "sim_swap": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 139.0
+    },
+    "upi_collect_scam": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 202.0
+    },
+    "voice_phishing": {
+      "precision": 1.0,
+      "recall": 1.0,
+      "f1-score": 1.0,
+      "support": 161.0
+    },
+    "accuracy": 0.9984407484407485,
+    "macro avg": {
+      "precision": 0.9984750506222898,
+      "recall": 0.9983972096743835,
+      "f1-score": 0.9984280780084792,
+      "support": 1924.0
+    },
+    "weighted avg": {
+      "precision": 0.9984558442732876,
+      "recall": 0.9984407484407485,
+      "f1-score": 0.9984406164369278,
+      "support": 1924.0
+    }
+  }
+}
