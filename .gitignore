@@ -34,6 +34,11 @@ frontend/.env.local
 *.ckpt
 models/advanced_classifier/model.safetensors
 
+# Local user database
+*.db
+*.sqlite
+backend/fraudguard.db
+
 # Vector store / model cache
 *.faiss
 *.index

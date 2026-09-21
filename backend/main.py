@@ -15,6 +15,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from core.config import settings
 from core.logging import configure_logging, logger
 from api.routes import router
+from api.auth_routes import router as auth_router
+from api.sessions_routes import router as sessions_router
 
 
 @asynccontextmanager
@@ -22,6 +24,14 @@ async def lifespan(app: FastAPI):
     # ── Startup ────────────────────────────────────────────────────────────
     configure_logging()
     logger.info("startup.begin", app=settings.app_name)
+
+    # Ensure the SQLite user store exists
+    try:
+        from core.db import init_db
+        init_db()
+        logger.info("startup.db_ready")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("startup.db_failed", error=str(exc))
 
     # Ensure the Qdrant advisory collection exists
     try:
@@ -68,7 +78,9 @@ app.add_middleware(
 )
 
 # ── Routes ────────────────────────────────────────────────────────────────────
+app.include_router(auth_router)
 app.include_router(router)
+app.include_router(sessions_router)
 
 
 if __name__ == "__main__":

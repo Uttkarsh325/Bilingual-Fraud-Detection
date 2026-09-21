@@ -10,23 +10,30 @@ from core.config import settings
 from core.logging import logger
 
 
-@lru_cache(maxsize=1)
-def get_llm() -> BaseChatModel:
+@lru_cache(maxsize=8)
+def get_llm(max_tokens: int = 1024) -> BaseChatModel:
     """
     Returns a cached LangChain ChatModel instance.
     Provider is chosen from settings.llm_provider.
+    A cache hit is returned for identical (provider, max_tokens) combos —
+    so callers that need longer outputs (e.g. translation) pass a bigger cap.
     """
     provider = settings.llm_provider.lower()
 
     if provider == "groq":
         from langchain_groq import ChatGroq
 
-        logger.info("llm.provider", provider="groq", model=settings.groq_model)
+        logger.info(
+            "llm.provider",
+            provider="groq",
+            model=settings.groq_model,
+            max_tokens=max_tokens,
+        )
         return ChatGroq(
             api_key=settings.groq_api_key,
             model=settings.groq_model,
             temperature=0.1,
-            max_tokens=1024,
+            max_tokens=max_tokens,
         )
 
     if provider == "ollama":

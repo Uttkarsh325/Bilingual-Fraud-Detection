@@ -1,11 +1,14 @@
 """
 FastAPI route definitions — chat, voice, memory, and health endpoints.
 """
+import asyncio
 import uuid
 from typing import Optional
 
+import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
 from pydantic import BaseModel
+from sqlalchemy.orm import Session
 
 from classification.classifier import classify_text
 from core.auth import get_current_user
@@ -16,10 +19,14 @@ from core.models import (
     ScamClassification,
     SynthesizeRequest,
     SynthesizeResponse,
+    TranslateRequest,
+    TranslateResponse,
     TranscribeResponse,
     UserMemory,
 )
 from api.pipeline import run_pipeline
+from api.sessions_routes import store_chat_turn
+from core.db import get_db
 from memory.mem0_layer import get_memory_layer
 from services.sarvam import sarvam_client
 from services.s3 import get_s3
@@ -41,17 +48,22 @@ class ClassifyRequest(BaseModel):
 
 
 @router.post("/classify", response_model=ScamClassification, tags=["classification"])
-async def classify_message(request: ClassifyRequest) -> ScamClassification:
+async def classify_message(
+    request: ClassifyRequest,
+    current_user: str = Depends(get_current_user),
+) -> ScamClassification:
     """
     Direct ML Scam Classification endpoint.
-    Runs the trained model (TF-IDF / XGBoost) on CPU in <1ms and returns
+    Requires authentication. Runs the trained transformer / ML models and returns
     the predicted scam category, confidence score, risk level, and detected indicators.
     """
     return classify_text(request.text)
 
 
 @router.get("/taxonomy", tags=["classification"])
-async def get_taxonomy():
+async def get_taxonomy(
+    current_user: str = Depends(get_current_user),
+):
     """Returns the full scam taxonomy definitions and risk levels."""
     from classification.taxonomy import SCAM_TAXONOMY
     return [
@@ -72,11 +84,13 @@ async def get_taxonomy():
 async def chat(
     request: ChatRequest,
     current_user: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ) -> ChatResponse:
     """
     Main conversational endpoint.
     Runs the full LangGraph pipeline:
       memory recall → scam classify → intent-aware RAG → memory store → respond.
+    The completed turn is persisted to the user's session history.
     """
     # Allow the auth token user_id to override the request body user_id
     # so the server is always the source of truth in a real deployment.
@@ -93,6 +107,27 @@ async def chat(
 
     response = await run_pipeline(request)
     logger.info("chat.response", session=request.session_id, reply_len=len(response.reply))
+
+    try:
+        store_chat_turn(
+            db=db,
+            user=current_user,
+            session_id=request.session_id,
+            user_message=request.message,
+            assistant_message=response.reply,
+            metadata=(
+                response.metadata.model_dump(mode="json") if response.metadata else None
+            ),
+            language=(
+                (response.metadata.language_detected if response.metadata else None)
+                or request.language
+                or "en-IN"
+            ),
+            mode=request.mode or "chat",
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("chat.persist_failed", error=str(exc))
+
     return response
 
 
@@ -124,13 +159,52 @@ async def transcribe_audio(
     except Exception as exc:  # noqa: BLE001
         logger.warning("voice.s3_upload_failed", error=str(exc))
 
+    # Normalise browser audio → canonical WAV so Sarvam's decoder never
+    # chokes on MediaRecorder quirks. ffmpeg is CPU/IO bound → off the loop.
+    from services.sarvam import normalize_audio
+    audio_bytes, stt_filename, stt_content_type = await asyncio.to_thread(
+        normalize_audio, audio_bytes, audio.filename, audio.content_type
+    )
+
     try:
         result = await sarvam_client.transcribe(
             audio_bytes=audio_bytes,
             language_code=language_hint,
+            filename=stt_filename,
+            content_type=stt_content_type,
         )
     except HTTPException:
         raise
+    except httpx.HTTPStatusError as exc:
+        # Sarvam answered with an HTTP error — surface the real reason in the
+        # message (and logs) instead of a generic "temporarily unavailable".
+        code = exc.response.status_code
+        reason = exc.response.text[:160]
+        logger.warning("voice.transcribe_http_error", status=code, reason=reason)
+        if code == 429:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail=(
+                    "Speech-to-text rate limit reached. Please wait a moment "
+                    "and try again, or type your message instead."
+                ),
+            ) from exc
+        if 400 <= code < 500:
+            raise HTTPException(
+                status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+                detail=(
+                    "Couldn't understand that audio. Please speak clearly and "
+                    "try again, or type your message instead. "
+                    f"(Sarvam HTTP {code}: {reason})"
+                ),
+            ) from exc
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=(
+                "Speech-to-text service is temporarily unavailable. "
+                "Please try again or type your message instead."
+            ),
+        ) from exc
     except Exception as exc:  # noqa: BLE001
         logger.warning("voice.transcribe_failed", error=str(exc))
         raise HTTPException(
@@ -181,6 +255,28 @@ async def synthesize_speech(
         audio_url = f"data:audio/wav;base64,{b64}"
 
     return SynthesizeResponse(audio_url=audio_url)
+
+
+# ─── Translation ─────────────────────────────────────────────────────────────
+
+@router.post("/translate", response_model=TranslateResponse, tags=["chat"])
+async def translate_message(
+    request: TranslateRequest,
+    current_user: str = Depends(get_current_user),
+) -> TranslateResponse:
+    """Translate a message into another language (default: English)."""
+    from services.translate import translate_text
+
+    try:
+        translated = await translate_text(request.text, request.target)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("translate.failed", error=str(exc))
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="Translation is temporarily unavailable. Please try again later.",
+        ) from exc
+
+    return TranslateResponse(translated_text=translated, target=request.target)
 
 
 # ─── Memory ───────────────────────────────────────────────────────────────────

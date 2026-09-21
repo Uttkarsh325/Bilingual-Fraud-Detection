@@ -59,3 +59,18 @@ export async function clearUserMemory(userId: string) {
   const { data } = await apiClient.delete(`/memory/${userId}`);
   return data;
 }
+
+/**
+ * Translate text into another language (default English).
+ * Routes through the Next.js proxy: /api/translate → backend /translate.
+ */
+export async function translateText(
+  text: string,
+  target: string = "en-IN"
+): Promise<string> {
+  const { data } = await apiClient.post<{ translated_text: string }>("/translate", {
+    text,
+    target,
+  });
+  return data.translated_text;
+}

@@ -41,6 +41,9 @@ pydantic>=2.8.0
 pydantic-settings>=2.4.0
 python-dotenv>=1.0.0
 
+# ─── Auth — user store (SQLite) ───────────────────────────────────────────────
+sqlalchemy>=2.0.30
+
 # ─── Logging / utils ─────────────────────────────────────────────────────────
 structlog>=24.4.0
 tenacity>=8.5.0

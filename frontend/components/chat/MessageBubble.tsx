@@ -4,11 +4,12 @@ import { motion } from "framer-motion";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import clsx from "clsx";
-import { ShieldCheck, User, Volume2 } from "lucide-react";
+import toast from "react-hot-toast";
+import { Languages, ShieldCheck, User, Volume2 } from "lucide-react";
 import type { ChatMessage } from "@/lib/types";
 import ScamBadge from "@/components/ui/ScamBadge";
 import SourceCitations from "@/components/ui/SourceCitations";
-import { synthesizeSpeech } from "@/lib/api/chat";
+import { synthesizeSpeech, translateText } from "@/lib/api/chat";
 import { useState } from "react";
 
 interface MessageBubbleProps {
@@ -17,9 +18,19 @@ interface MessageBubbleProps {
   languageCode: string;
 }
 
+// Indic script ranges for the languages we support — used to decide whether a
+// response is worth offering to translate (e.g. Devanagari for Hindi/Marathi).
+function isNonEnglish(text: string): boolean {
+  return /[\u0900-\u097F\u0980-\u09FF\u0A00-\u0A7F\u0A80-\u0AFF\u0B80-\u0BFF\u0C00-\u0C7F\u0C80-\u0CFF\u0D00-\u0D7F]/.test(
+    text
+  );
+}
+
 export default function MessageBubble({ message, sessionId, languageCode }: MessageBubbleProps) {
   const isUser = message.role === "user";
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [translated, setTranslated] = useState<string | null>(null);
+  const [translating, setTranslating] = useState(false);
 
   const handleSpeak = async () => {
     if (isSpeaking) return;
@@ -38,6 +49,27 @@ export default function MessageBubble({ message, sessionId, languageCode }: Mess
       setIsSpeaking(false);
     }
   };
+
+  const handleTranslate = async () => {
+    if (translated) {
+      setTranslated(null); // toggle back to original
+      return;
+    }
+    setTranslating(true);
+    try {
+      const result = await translateText(message.content);
+      setTranslated(result);
+    } catch (err: unknown) {
+      const detail =
+        err instanceof Error ? err.message : "Translation failed";
+      toast.error(detail);
+    } finally {
+      setTranslating(false);
+    }
+  };
+
+  const showTranslate = !isUser && isNonEnglish(message.content);
+  const displayContent = translated ?? message.content;
 
   return (
     <motion.div
@@ -66,7 +98,7 @@ export default function MessageBubble({ message, sessionId, languageCode }: Mess
           <p className="whitespace-pre-wrap">{message.content}</p>
         ) : (
           <div className="prose prose-invert prose-sm max-w-none">
-            <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+            <ReactMarkdown remarkPlugins={[remarkGfm]}>{displayContent}</ReactMarkdown>
           </div>
         )}
 
@@ -93,21 +125,42 @@ export default function MessageBubble({ message, sessionId, languageCode }: Mess
             {message.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
           </span>
 
-          {/* TTS play button — assistant only */}
-          {!isUser && (
-            <button
-              onClick={handleSpeak}
-              disabled={isSpeaking}
-              title="Play response aloud"
-              className={clsx(
-                "text-slate-500 hover:text-slate-300 transition-colors",
-                isSpeaking && "text-brand-400 animate-pulse"
-              )}
-              aria-label="Play response as audio"
-            >
-              <Volume2 className="w-3.5 h-3.5" />
-            </button>
-          )}
+          {/* Translate toggle — Hindi/Indic responses → English */}
+          <div className="flex items-center gap-3">
+            {showTranslate && (
+              <button
+                onClick={handleTranslate}
+                disabled={translating}
+                title={translated ? "Show original" : "Translate to English"}
+                aria-label={translated ? "Show original response" : "Translate to English"}
+                className={clsx(
+                  "flex items-center text-slate-500 hover:text-slate-300 transition-colors",
+                  translated && "text-brand-400"
+                )}
+              >
+                <Languages className={clsx("w-3.5 h-3.5", translating && "animate-pulse")} />
+                <span className="ml-1 text-xs">
+                  {translating ? "Translating…" : translated ? "Original" : "English"}
+                </span>
+              </button>
+            )}
+
+            {/* TTS play button — assistant only */}
+            {!isUser && (
+              <button
+                onClick={handleSpeak}
+                disabled={isSpeaking}
+                title="Play response aloud"
+                className={clsx(
+                  "text-slate-500 hover:text-slate-300 transition-colors",
+                  isSpeaking && "text-brand-400 animate-pulse"
+                )}
+                aria-label="Play response as audio"
+              >
+                <Volume2 className="w-3.5 h-3.5" />
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

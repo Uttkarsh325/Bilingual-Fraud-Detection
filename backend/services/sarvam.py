@@ -5,13 +5,73 @@ Docs: https://docs.sarvam.ai/
 All calls are async via httpx.
 """
 import base64
+import os
+import shutil
+import subprocess
+import tempfile
 from typing import Optional
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception
 
 from core.config import settings
 from core.logging import logger
+
+
+def normalize_audio(
+    data: bytes,
+    filename: Optional[str] = None,
+    content_type: Optional[str] = None,
+) -> tuple[bytes, str, str]:
+    """
+    Normalise arbitrary browser audio into a canonical 16 kHz mono WAV.
+
+    Real MediaRecorder captures (WebM/Opus fragments, Safari's .mp4) sometimes
+    carry non-standard metadata that downstream decoders reject. Re-muxing via
+    ffmpeg gives Sarvam a clean, universally decodable payload.
+
+    Falls back to the original bytes (pass-through) when ffmpeg is unavailable.
+    Returns (audio_bytes, filename, content_type).
+    """
+    if shutil.which("ffmpeg") is None or not data:
+        return data, filename or "audio.wav", content_type or "audio/wav"
+
+    try:
+        with tempfile.TemporaryDirectory() as td:
+            src = os.path.join(td, "in")
+            dst = os.path.join(td, "out.wav")
+            with open(src, "wb") as f:
+                f.write(data)
+            proc = subprocess.run(
+                [
+                    "ffmpeg", "-y", "-loglevel", "error",
+                    "-i", src,
+                    "-ar", "16000", "-ac", "1", "-c:a", "pcm_s16le",
+                    dst,
+                ],
+                capture_output=True,
+                timeout=30,
+            )
+            if proc.returncode != 0:
+                logger.warning("sarvam.normalize_failed", err=proc.stderr.decode()[:200])
+                return data, filename or "audio.wav", content_type or "audio/wav"
+            with open(dst, "rb") as f:
+                return f.read(), "audio.wav", "audio/wav"
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("sarvam.normalize_error", error=str(exc))
+        return data, filename or "audio.wav", content_type or "audio/wav"
+
+
+def _retryable_stt(exc: BaseException) -> bool:
+    """
+    Retry only transient failures (5xx, rate limits, network timeouts).
+    4xx errors mean the audio/key is bad — retrying is pointless and slow.
+    """
+    if isinstance(exc, httpx.HTTPStatusError):
+        return exc.response.status_code == 429 or exc.response.status_code >= 500
+    return isinstance(
+        exc, (httpx.TimeoutException, httpx.TransportError, httpx.ConnectError)
+    )
 
 
 # Sarvam's `bulbul:v3` TTS uses a set of base speakers that work across all
@@ -58,14 +118,28 @@ class SarvamClient:
 
     # ── Speech-to-Text ────────────────────────────────────────────────────────
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=4))
+    @retry(
+        stop=stop_after_attempt(3),
+        wait=wait_exponential(min=1, max=4),
+        retry=retry_if_exception(_retryable_stt),
+    )
     async def transcribe(
         self,
         audio_bytes: bytes,
         language_code: Optional[str] = None,
+        filename: Optional[str] = None,
+        content_type: Optional[str] = None,
     ) -> dict:
         """
-        Convert speech audio (WebM/WAV/MP3) to text using multipart upload.
+        Convert speech audio to text using multipart upload.
+
+        Args:
+            audio_bytes:  Raw audio payload as captured by the browser.
+            language_code: Optional BCP-47 hint, e.g. "en-IN".
+            filename:     Original file name from the upload (preserved so
+                          Sarvam's decoder sees the true container — e.g.
+                          .webm/.mp4 from a MediaRecorder, not a fake .wav).
+            content_type: Original MIME type of the upload.
 
         Returns:
             {
@@ -76,7 +150,13 @@ class SarvamClient:
         """
         # Sarvam STT expects multipart/form-data, NOT base64 JSON.
         # httpx sets Content-Type + boundary automatically when files= is used.
-        files = {"file": ("audio.wav", audio_bytes, "audio/wav")}
+        files = {
+            "file": (
+                filename or "audio.wav",
+                audio_bytes,
+                content_type or "audio/wav",
+            )
+        }
         data: dict = {"model": settings.sarvam_stt_model}
         if language_code:
             data["language_code"] = language_code

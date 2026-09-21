@@ -2,15 +2,19 @@
 Scam Classifier for FraudGuard AI.
 
 Tiered Classification Architecture:
-  Tier 1 (Trained ML Model - Production):
-    Loads serialized ML models (TF-IDF + Logistic Regression or XGBoost) trained on
-    the Indian financial fraud taxonomy dataset. Returns predicted category, calibrated
-    probability confidence, and detected trigger indicators.
+  Tier 1 (Fine-tuned Transformer - Production):
+    DistilBERT sequence classifier fine-tuned on the Indian financial fraud taxonomy
+    dataset (models/advanced_classifier). Returns predicted category, probability
+    confidence, and detected trigger indicators.
 
-  Tier 2 (Zero-shot NLI Model - Optional Fallback):
+  Tier 2 (Trained ML Model - Fallback):
+    Loads serialized ML models (TF-IDF + Logistic Regression or XGBoost) trained on
+    the same dataset when the transformer is unavailable.
+
+  Tier 3 (Zero-shot NLI Model - Optional Fallback):
     HuggingFace zero-shot NLI pipeline when torch/transformers are loaded.
 
-  Tier 3 (Rule-Based Matcher - Resilient Fallback):
+  Tier 4 (Rule-Based Matcher - Resilient Fallback):
     Fast regex and keyword matcher ensuring the service never fails even in zero-dependency environments.
 """
 
@@ -74,7 +78,67 @@ def _build_result(defn: ScamDefinition, confidence: float, indicators: list[str]
     )
 
 
-# ─── Tier 1: Trained Machine Learning Classifier ──────────────────────────────
+# ─── Tier 1: Fine-Tuned Transformer Classifier (Primary) ──────────────────────
+
+class TransformerScamClassifier:
+    """Loads and serves inference from the fine-tuned DistilBERT model in models/advanced_classifier/."""
+
+    MODEL_PATH = MODELS_DIR / "advanced_classifier"
+    _model = None
+    _tokenizer = None
+
+    @classmethod
+    def _ensure_loaded(cls):
+        if cls._model is None and cls.MODEL_PATH.exists() and (cls.MODEL_PATH / "model.safetensors").exists():
+            try:
+                from transformers import AutoModelForSequenceClassification, AutoTokenizer
+                cls._tokenizer = AutoTokenizer.from_pretrained(str(cls.MODEL_PATH))
+                cls._model = AutoModelForSequenceClassification.from_pretrained(str(cls.MODEL_PATH))
+                logger.info("classifier.transformer_loaded", path=str(cls.MODEL_PATH))
+            except Exception as exc:
+                logger.warning("classifier.transformer_load_failed", error=str(exc))
+                cls._model = False
+        return cls._model
+
+    @classmethod
+    def classify(cls, text: str) -> Optional[ScamClassification]:
+        model = cls._ensure_loaded()
+        if model is None or model is False:
+            return None
+
+        try:
+            import torch
+
+            inputs = cls._tokenizer(
+                text[:512],
+                truncation=True,
+                padding=True,
+                max_length=128,
+                return_tensors="pt",
+            )
+            with torch.inference_mode():
+                logits = model(**inputs).logits
+
+            probs = torch.softmax(logits[0], dim=-1)
+            pred_idx = int(torch.argmax(probs))
+            confidence = float(probs[pred_idx])
+
+            id2label = model.config.id2label
+            pred_category = id2label.get(pred_idx) or id2label.get(str(pred_idx))
+
+            defn = CATEGORY_TO_DEF.get(pred_category)
+            if defn is None:
+                return None
+
+            indicators = _extract_indicators(text, pred_category)
+            return _build_result(defn, confidence, indicators)
+
+        except Exception as exc:
+            logger.warning("classifier.transformer_inference_error", error=str(exc))
+            return None
+
+
+# ─── Tier 2: Trained ML Classifier (Fallback) ─────────────────────────────────
 
 class TrainedScamClassifier:
     """Loads and serves inference from the trained model artifacts in models/."""
@@ -151,7 +215,7 @@ class TrainedScamClassifier:
             return None
 
 
-# ─── Tier 2: Zero-Shot NLI Classifier (Optional) ──────────────────────────────
+# ─── Tier 3: Zero-Shot NLI Classifier (Optional) ──────────────────────────────
 
 class ZeroShotScamClassifier:
     """Uses HuggingFace NLI model for zero-shot text classification if available."""
@@ -197,7 +261,7 @@ class ZeroShotScamClassifier:
             return None
 
 
-# ─── Tier 3: Rule-Based Fallback ──────────────────────────────────────────────
+# ─── Tier 4: Rule-Based Fallback ──────────────────────────────────────────────
 
 def rule_based_classify(text: str) -> ScamClassification:
     """Keyword-based classification fallback."""
@@ -235,16 +299,23 @@ def classify_text(text: str, use_ml: bool = True) -> ScamClassification:
     Main classification function called by API and LangGraph pipeline.
 
     Execution Strategy:
-      1. Try the trained production ML model (TF-IDF / XGBoost).
-      2. If trained model is unavailable, try Zero-Shot NLI.
-      3. If ML fails or is disabled, fall back to rule-based classification.
+      1. Try the fine-tuned transformer model (DistilBERT, models/advanced_classifier).
+      2. Try the trained production ML models (TF-IDF / XGBoost).
+      3. Try Zero-Shot NLI.
+      4. If ML fails or is disabled, fall back to rule-based classification.
     """
     if use_ml:
+        # 1. Fine-tuned transformer (primary)
+        tf_result = TransformerScamClassifier.classify(text)
+        if tf_result is not None:
+            return tf_result
+
+        # 2. Trained TF-IDF / XGBoost fallback
         ml_result = TrainedScamClassifier.classify(text)
         if ml_result is not None:
             return ml_result
 
-        # Fallback to zero-shot if trained model missing
+        # 3. Zero-shot if trained models missing
         zs_result = ZeroShotScamClassifier.classify(text)
         if zs_result is not None:
             return zs_result

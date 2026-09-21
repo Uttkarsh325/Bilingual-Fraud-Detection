@@ -82,6 +82,7 @@ async def node_rag(state: PipelineState) -> PipelineState:
             query=state["message"],
             memory_context=state.get("memory_context", ""),
             scam_result=state.get("scam_result"),
+            language=state.get("language", "en-IN"),
         )
 
         # Attach scam classification to metadata
@@ -95,6 +96,7 @@ async def node_rag(state: PipelineState) -> PipelineState:
                 label_display=sc["label_display"],
                 indicators=sc.get("indicators", []),
             )
+        metadata.language_detected = state.get("language", "en-IN")
 
         return {**state, "reply": reply, "metadata": metadata}
     except Exception as exc:  # noqa: BLE001
@@ -165,16 +167,48 @@ def get_pipeline():
     return _pipeline
 
 
+# ─── Language auto-detection (script-based fallback) ────────────────────────
+# If a message is written in an Indic script but no explicit `language` was
+# sent, mirror the message's language so the answer comes back in it. Pure
+# script detection — deterministic and zero-latency vs. an external detector.
+
+_SCRIPT_LANGUAGE_MAP = [
+    (r"[\u0900-\u097F]", "hi-IN"),  # Devanagari (Hindi, Marathi)
+    (r"[\u0980-\u09FF]", "bn-IN"),  # Bengali
+    (r"[\u0A00-\u0A7F]", "pa-IN"),  # Gurmukhi (Punjabi)
+    (r"[\u0A80-\u0AFF]", "gu-IN"),  # Gujarati
+    (r"[\u0B80-\u0BFF]", "ta-IN"),  # Tamil
+    (r"[\u0C00-\u0C7F]", "te-IN"),  # Telugu
+    (r"[\u0C80-\u0CFF]", "kn-IN"),  # Kannada
+    (r"[\u0D00-\u0D7F]", "ml-IN"),  # Malayalam
+]
+
+
+def _detect_script_language(message: str) -> Optional[str]:
+    import re
+
+    for pattern, language in _SCRIPT_LANGUAGE_MAP:
+        if re.search(pattern, message):
+            return language
+    return None
+
+
 # ─── Public Helper ────────────────────────────────────────────────────────────
 
 async def run_pipeline(request: ChatRequest) -> ChatResponse:
     pipeline = get_pipeline()
 
+    requested_language = (request.language or "en-IN").lower()
+    if requested_language in ("", "en-in", "unknown"):
+        script_lang = _detect_script_language(request.message)
+        if script_lang:
+            requested_language = script_lang
+
     initial_state: PipelineState = {
         "session_id": request.session_id,
         "user_id": request.user_id,
         "message": request.message,
-        "language": request.language or "en-IN",
+        "language": requested_language,
         "memory_context": "",
         "scam_result": None,
         "reply": "",

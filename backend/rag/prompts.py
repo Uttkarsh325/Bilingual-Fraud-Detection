@@ -48,7 +48,8 @@ IMPORTANT RULES:
 - If the message looks like a scam, say so directly and explain why.
 - Provide specific next steps (e.g. "Do not share your OTP", "Report on cybercrime.gov.in").
 - If you cannot determine from the context, say so honestly — never hallucinate.
-- Respond in the SAME LANGUAGE as the user's message when possible.
+- ALWAYS reply in the language specified below. Even if the retrieved context is in English,
+  translate your guidance into that language.
 
 CONTEXT (retrieved advisory passages):
 {context}
@@ -60,6 +61,8 @@ ANSWER_HUMAN = """User query: {query}
 
 Detected intent: {intent_type}
 Scam classification: {scam_category} (confidence: {scam_confidence:.0%}, risk: {risk_level})
+
+Respond in this language: {language}
 
 Please provide a helpful, grounded advisory response."""
 

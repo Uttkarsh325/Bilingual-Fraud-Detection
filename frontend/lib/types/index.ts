@@ -77,6 +77,7 @@ export interface ChatRequest {
   user_id: string;
   message: string;
   language?: string;           // ISO 639-1 or BCP-47, e.g. "hi", "en", "ta"
+  mode?: "chat" | "voice";
 }
 
 export interface ChatResponse {
@@ -107,6 +108,38 @@ export interface UserMemory {
   reported_scam_types: ScamCategory[];
   session_count: number;
   last_active: string;
+}
+
+// ─── Session History ──────────────────────────────────────────────────────────
+
+export type SessionMode = "chat" | "voice";
+
+export interface SessionSummary {
+  session_id: string;
+  mode: SessionMode;
+  title: string;
+  language: string;
+  created_at: string;
+  updated_at: string;
+  message_count: number;
+}
+
+export interface SessionMessageRecord {
+  role: MessageRole;
+  content: string;
+  metadata: MessageMetadata;
+  created_at: string;
+}
+
+export interface SessionDetail extends SessionSummary {
+  messages: SessionMessageRecord[];
+}
+
+// ─── Translation ─────────────────────────────────────────────────────────────
+
+export interface TranslateResponse {
+  translated_text: string;
+  target: string;
 }
 
 // ─── UI State ─────────────────────────────────────────────────────────────────

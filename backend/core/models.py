@@ -79,6 +79,7 @@ class ChatRequest(BaseModel):
     user_id: str
     message: str
     language: Optional[str] = "en-IN"
+    mode: Optional[str] = "chat"
 
 
 class MessageMetadata(BaseModel):
@@ -123,3 +124,56 @@ class UserMemory(BaseModel):
     session_count: int = 0
     last_active: Optional[str] = None
     raw_memories: list[dict] = Field(default_factory=list)
+
+
+# ─── Session History API ─────────────────────────────────────────────────────
+
+class SessionCreate(BaseModel):
+    session_id: str
+    mode: Optional[str] = "chat"
+    language: Optional[str] = "en-IN"
+    title: Optional[str] = None
+
+
+class SessionUpdate(BaseModel):
+    title: Optional[str] = None
+    language: Optional[str] = None
+
+
+class SessionMessageIn(BaseModel):
+    role: str
+    content: str
+    metadata: Optional[dict] = None
+
+
+class SessionMessageOut(BaseModel):
+    role: str
+    content: str
+    metadata: dict = Field(default_factory=dict)
+    created_at: str
+
+
+class SessionSummary(BaseModel):
+    session_id: str
+    mode: str = "chat"
+    title: str
+    language: str = "en-IN"
+    created_at: str
+    updated_at: str
+    message_count: int = 0
+
+
+class SessionDetail(SessionSummary):
+    messages: list[SessionMessageOut] = Field(default_factory=list)
+
+
+# ─── Translation API ─────────────────────────────────────────────────────────
+
+class TranslateRequest(BaseModel):
+    text: str
+    target: str = "en-IN"  # BCP-47 code to translate INTO
+
+
+class TranslateResponse(BaseModel):
+    translated_text: str
+    target: str

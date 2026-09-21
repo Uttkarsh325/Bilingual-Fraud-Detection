@@ -177,6 +177,7 @@ class IntentAwareRAGEngine:
         scam_category: str,
         scam_confidence: float,
         risk_level: str,
+        language: str = "en-IN",
     ) -> str:
         context_parts = []
         for i, (doc, score) in enumerate(sources, 1):
@@ -189,11 +190,14 @@ class IntentAwareRAGEngine:
             {
                 "context": context,
                 "memory_context": memory_context or "No prior interactions.",
-                "query": intent.rewritten_query,
+                # Pass the USER'S OWN words (possibly Hindi/other Indic language),
+                # not the English rewrite — that is what makes replies localised.
+                "query": query,
                 "intent_type": intent.type.value,
                 "scam_category": scam_category,
                 "scam_confidence": scam_confidence,
                 "risk_level": risk_level,
+                "language": language,
             }
         )
         return answer.strip()
@@ -205,6 +209,7 @@ class IntentAwareRAGEngine:
         query: str,
         memory_context: str = "",
         scam_result: Optional[dict] = None,
+        language: str = "en-IN",
     ) -> tuple[str, MessageMetadata]:
         """
         Run the full intent-aware RAG pipeline.
@@ -246,6 +251,7 @@ class IntentAwareRAGEngine:
             scam_category=scam_category,
             scam_confidence=scam_confidence,
             risk_level=risk_level,
+            language=language,
         )
 
         elapsed_ms = int((time.monotonic() - t0) * 1000)

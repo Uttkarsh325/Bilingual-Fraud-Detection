@@ -6,6 +6,7 @@ import toast from "react-hot-toast";
 import { sendChatMessage, transcribeAudio } from "@/lib/api/chat";
 import type { ChatMessage, ConversationState, SupportedLanguage } from "@/lib/types";
 import { SUPPORTED_LANGUAGES } from "@/lib/types";
+import { detectScriptLanguage } from "@/lib/language";
 
 function getOrCreateUserId(): string {
   if (typeof window === "undefined") return "anon";
@@ -38,9 +39,23 @@ export function useConversation() {
     return full;
   }, []);
 
+  const setLanguage = useCallback((lang: SupportedLanguage) => {
+    setState((s) => ({ ...s, selectedLanguage: lang }));
+  }, []);
+
   const sendMessage = useCallback(
-    async (text: string) => {
+    async (text: string, mode: "chat" | "voice" = "chat", language?: string) => {
       if (!text.trim()) return;
+
+      // Mirror the message's language when one is explicitly given (voice flow)
+      // or infer it from the script (e.g. Hindi typing → Hindi reply).
+      const scriptLang = detectScriptLanguage(text);
+      let effectiveLanguage = language ?? state.selectedLanguage.code;
+      if (!language && scriptLang) effectiveLanguage = scriptLang;
+      if (scriptLang) {
+        const matched = SUPPORTED_LANGUAGES.find((l) => l.code === scriptLang);
+        if (matched) setLanguage(matched);
+      }
 
       // Add the user bubble immediately
       addMessage({ role: "user", content: text });
@@ -51,7 +66,8 @@ export function useConversation() {
           session_id: sessionId.current,
           user_id: userId.current,
           message: text,
-          language: state.selectedLanguage.code,
+          language: effectiveLanguage,
+          mode,
         });
 
         addMessage({
@@ -67,20 +83,35 @@ export function useConversation() {
         setState((s) => ({ ...s, isLoading: false }));
       }
     },
-    [state.selectedLanguage.code, addMessage]
+    [state.selectedLanguage.code, addMessage, setLanguage]
   );
 
   const sendAudio = useCallback(
     async (blob: Blob) => {
       setState((s) => ({ ...s, isLoading: true, error: null }));
       try {
+        // No language hint → Sarvam auto-detects Hindi / any other language.
         const transcription = await transcribeAudio(
           blob,
           sessionId.current,
-          userId.current,
-          state.selectedLanguage.code
+          userId.current
         );
-        await sendMessage(transcription.transcript);
+
+        const detectedLang = SUPPORTED_LANGUAGES.find(
+          (l) =>
+            l.code.toLowerCase() ===
+            (transcription.language_detected || "").toLowerCase()
+        );
+
+        // Reflect the spoken language in the UI (selector, TTS)…
+        if (detectedLang) setLanguage(detectedLang);
+
+        // …and force the analysis to run/reply in that language.
+        await sendMessage(
+          transcription.transcript,
+          "voice",
+          detectedLang ? detectedLang.code : state.selectedLanguage.code
+        );
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : "Audio processing failed";
         setState((s) => ({ ...s, error: message }));
@@ -89,12 +120,8 @@ export function useConversation() {
         setState((s) => ({ ...s, isLoading: false }));
       }
     },
-    [state.selectedLanguage.code, sendMessage]
+    [state.selectedLanguage.code, sendMessage, setLanguage]
   );
-
-  const setLanguage = useCallback((lang: SupportedLanguage) => {
-    setState((s) => ({ ...s, selectedLanguage: lang }));
-  }, []);
 
   const resetConversation = useCallback(() => {
     sessionId.current = uuidv4();
@@ -106,11 +133,24 @@ export function useConversation() {
     }));
   }, []);
 
+  // Resume a saved session: switch the active id and hydrate the transcript.
+  const loadSession = useCallback((id: string, history: ChatMessage[]) => {
+    sessionId.current = id;
+    setState((s) => ({
+      ...s,
+      sessionId: id,
+      messages: history,
+      error: null,
+      isLoading: false,
+    }));
+  }, []);
+
   return {
     ...state,
     sendMessage,
     sendAudio,
     setLanguage,
     resetConversation,
+    loadSession,
   };
 }

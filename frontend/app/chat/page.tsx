@@ -5,8 +5,18 @@ import { useConversation } from "@/lib/hooks/useConversation";
 import ChatWindow from "@/components/chat/ChatWindow";
 import ChatInput from "@/components/chat/ChatInput";
 import LanguageSelector from "@/components/ui/LanguageSelector";
+import RequireAuth from "@/components/auth/RequireAuth";
+import SessionHistory from "@/components/sessions/SessionHistory";
 
 export default function ChatPage() {
+  return (
+    <RequireAuth>
+      <ChatContent />
+    </RequireAuth>
+  );
+}
+
+function ChatContent() {
   const {
     messages,
     isLoading,
@@ -16,6 +26,7 @@ export default function ChatPage() {
     sendAudio,
     setLanguage,
     resetConversation,
+    loadSession,
   } = useConversation();
 
   return (
@@ -28,15 +39,22 @@ export default function ChatPage() {
             Text or voice — I understand your language
           </span>
         </div>
-        <button
-          onClick={resetConversation}
-          title="New conversation"
-          className="btn-secondary text-xs py-1.5 px-3"
-          aria-label="Start new conversation"
-        >
-          <RotateCcw className="w-3.5 h-3.5" />
-          <span className="hidden sm:inline">New Chat</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <SessionHistory
+            activeSessionId={sessionId}
+            onLoadSession={loadSession}
+            onNewSession={resetConversation}
+          />
+          <button
+            onClick={resetConversation}
+            title="New conversation"
+            className="btn-secondary text-xs py-1.5 px-3"
+            aria-label="Start new conversation"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">New Chat</span>
+          </button>
+        </div>
       </div>
 
       {/* Chat messages */}
