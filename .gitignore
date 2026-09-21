@@ -8,9 +8,13 @@ __pycache__/
 *.pyc
 *.pyo
 *.pyd
+.venv/
+venv/
 backend/venv/
 backend/.venv/
 ingestion/venv/
+*.venv
+
 *.egg-info/
 .pytest_cache/
 .mypy_cache/
@@ -20,6 +24,15 @@ node_modules/
 frontend/.next/
 frontend/out/
 frontend/.env.local
+
+# Model weights & checkpoints (>100MB GitHub limit)
+*.safetensors
+*.pt
+*.bin
+*.onnx
+*.h5
+*.ckpt
+models/advanced_classifier/model.safetensors
 
 # Vector store / model cache
 *.faiss

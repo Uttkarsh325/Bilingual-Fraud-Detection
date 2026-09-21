@@ -5,12 +5,15 @@ import uuid
 from typing import Optional
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile, status
+from pydantic import BaseModel
 
+from classification.classifier import classify_text
 from core.auth import get_current_user
 from core.logging import logger
 from core.models import (
     ChatRequest,
     ChatResponse,
+    ScamClassification,
     SynthesizeRequest,
     SynthesizeResponse,
     TranscribeResponse,
@@ -29,6 +32,38 @@ router = APIRouter()
 @router.get("/health", tags=["system"])
 async def health_check():
     return {"status": "ok", "service": "FraudGuard AI Backend"}
+
+
+# ─── Direct ML Classification ────────────────────────────────────────────────
+
+class ClassifyRequest(BaseModel):
+    text: str
+
+
+@router.post("/classify", response_model=ScamClassification, tags=["classification"])
+async def classify_message(request: ClassifyRequest) -> ScamClassification:
+    """
+    Direct ML Scam Classification endpoint.
+    Runs the trained model (TF-IDF / XGBoost) on CPU in <1ms and returns
+    the predicted scam category, confidence score, risk level, and detected indicators.
+    """
+    return classify_text(request.text)
+
+
+@router.get("/taxonomy", tags=["classification"])
+async def get_taxonomy():
+    """Returns the full scam taxonomy definitions and risk levels."""
+    from classification.taxonomy import SCAM_TAXONOMY
+    return [
+        {
+            "category": defn.category,
+            "label": defn.label,
+            "risk_level": defn.risk_level,
+            "description": defn.description,
+            "keywords": defn.keywords,
+        }
+        for defn in SCAM_TAXONOMY
+    ]
 
 
 # ─── Chat ─────────────────────────────────────────────────────────────────────
