@@ -24,7 +24,7 @@ from typing import Optional
 import joblib
 import numpy as np
 
-from classification.taxonomy import CATEGORY_TO_DEF, SCAM_TAXONOMY, ScamDefinition
+from classification.taxonomy import CATEGORY_TO_DEF, SCAM_TAXONOMY, ScamDefinition, _combined_keywords
 from core.logging import logger
 from core.models import RiskLevel, ScamCategory, ScamClassification
 
@@ -37,7 +37,75 @@ _RISK_MAP = {
     "safe": RiskLevel.SAFE,
 }
 
+# Minimum confidence an ML verdict must hit before we surface a scam call that
+# carries no matched indicators. Models are sometimes confidently wrong on
+# out-of-distribution input; a scam verdict should be backed by evidence.
+_MIN_CONFIDENCE_NO_INDICATORS = 0.7
+
+# Script ranges the fine-tuned models were never trained on. When a message is
+# written in one of these (e.g. Devanagari), the English-trained DistilBERT /
+# TF-IDF output is out-of-distribution noise, so a scam verdict is only trusted
+# when it is corroborated by matched taxonomy indicators.
+_NON_LATIN_SCRIPT_RANGES = [
+    (r"[\u0900-\u097F]", "Devanagari"),  # Hindi, Marathi, Nepali, Sanskrit
+    (r"[\u0980-\u09FF]", "Bengali"),
+    (r"[\u0A00-\u0A7F]", "Gurmukhi"),
+    (r"[\u0A80-\u0AFF]", "Gujarati"),
+    (r"[\u0B00-\u0B7F]", "Oriya"),
+    (r"[\u0B80-\u0BFF]", "Tamil"),
+    (r"[\u0C00-\u0C7F]", "Telugu"),
+    (r"[\u0C80-\u0CFF]", "Kannada"),
+    (r"[\u0D00-\u0D7F]", "Malayalam"),
+    (r"[\u0600-\u06FF]", "Arabic"),
+    (r"[\u0E00-\u0E7F]", "Thai"),
+    (r"[\u0F00-\u0FFF]", "Tibetan"),
+    (r"[\u2000-\u206F]", "Arabic_Presentation"),
+]
+
 MODELS_DIR = Path(__file__).resolve().parent.parent.parent / "models"
+
+
+def _is_non_latin_script(text: str) -> bool:
+    """True if the message is written (at least partly) in a non-Latin script."""
+    for pattern, _name in _NON_LATIN_SCRIPT_RANGES:
+        if re.search(pattern, text):
+            return True
+    return False
+
+
+def _gate_ml_verdict(
+    result: Optional[ScamClassification], text: str
+) -> Optional[ScamClassification]:
+    """Reject unreliably-sourced ML verdicts (guard against OOD model noise).
+
+    Safe/unknown/benign outcomes always pass on in-distribution (Latin-script)
+    input. On out-of-distribution (non-Latin) input the model output is noise,
+    so a verdict is only trusted when it is corroborated by matched indicators
+    or carries high confidence. Unsure low-confidence \"benign\" guesses on
+    Hindi messages are dropped so the tier ladder can fall through to the
+    rule-based matcher (which now understands Devanagari keywords).
+    """
+    if result is None:
+        return None
+
+    is_safe = (
+        result.risk_level == RiskLevel.SAFE
+        or result.category in (ScamCategory.BENIGN, ScamCategory.UNKNOWN)
+    )
+    if result.indicators:
+        return result
+
+    if not _is_non_latin_script(text):
+        # In-distribution: trust the model (safe verdicts included).
+        return result
+
+    # Out-of-distribution (e.g. Devanagari) — require corroboration or
+    # high confidence, even for a "benign" verdict.
+    if is_safe and result.confidence >= _MIN_CONFIDENCE_NO_INDICATORS:
+        return result
+
+    logger.debug("classifier.gated_ood_verdict", category=result.category.value)
+    return None
 
 
 def _extract_indicators(text: str, category: Optional[str] = None) -> list[str]:
@@ -48,7 +116,7 @@ def _extract_indicators(text: str, category: Optional[str] = None) -> list[str]:
     # Check category specific keywords first
     if category and category in CATEGORY_TO_DEF:
         defn = CATEGORY_TO_DEF[category]
-        for kw in defn.keywords:
+        for kw in _combined_keywords(defn):
             if re.search(r"\b" + re.escape(kw) + r"\b", text_lower):
                 matched.append(kw)
 
@@ -264,16 +332,17 @@ class ZeroShotScamClassifier:
 # ─── Tier 4: Rule-Based Fallback ──────────────────────────────────────────────
 
 def rule_based_classify(text: str) -> ScamClassification:
-    """Keyword-based classification fallback."""
+    """Keyword-based classification fallback (English + Devanagari Hindi)."""
     text_lower = text.lower()
     best_score = 0.0
     best_defn: Optional[ScamDefinition] = None
     best_indicators: list[str] = []
 
     for defn in SCAM_TAXONOMY:
-        matched = [kw for kw in defn.keywords if re.search(r"\b" + re.escape(kw) + r"\b", text_lower)]
+        all_kw = _combined_keywords(defn)
+        matched = [kw for kw in all_kw if re.search(r"\b" + re.escape(kw) + r"\b", text_lower)]
         if matched:
-            score = min(1.0, 0.4 + (len(matched) / max(len(defn.keywords), 1)) * 0.6)
+            score = min(1.0, 0.4 + (len(matched) / max(len(all_kw), 1)) * 0.6)
             if score > best_score:
                 best_score = score
                 best_defn = defn
@@ -294,6 +363,59 @@ def rule_based_classify(text: str) -> ScamClassification:
 
 # ─── Public Interface ─────────────────────────────────────────────────────────
 
+def _rule_based_evidence(text: str) -> Optional[ScamClassification]:
+    """Run the keyword matcher as an evidence scan (script-agnostic)."""
+    res = rule_based_classify(text)
+    if res.category in (ScamCategory.BENIGN, ScamCategory.UNKNOWN):
+        return None
+    return res
+
+
+def _resolve_rule_override(
+    ml: ScamClassification | None,
+    rule: ScamClassification | None,
+    text: str,
+) -> ScamClassification | None:
+    """Prefer concrete rule-based evidence over weak/uncertain ML verdicts.
+
+    - A confident, evidence-backed ML call always wins.
+    - On in-distribution (Latin-script) input, a high-confidence ML verdict is
+      trusted even without matched indicators (e.g. a confident ``sim_swap``
+      call the keyword matcher can't corroborate).
+    - On out-of-distribution (non-Latin) input the ML categories are model
+      guesswork, so concrete matched indicators (e.g. ``cashback``/
+      ``लिंक``) win over an unevidenced ML guess.
+
+    A confident ML ``benign`` verdict is respected: legit messages that merely
+    contain a loose keyword (e.g. a genuine OTP login SMS) must not be
+    re-flagged as scams.
+    """
+    if ml is None:
+        return rule
+    if rule is None:
+        return ml
+
+    ml_is_benign = ml.category in (ScamCategory.BENIGN, ScamCategory.UNKNOWN)
+    ml_is_confident = ml.confidence >= _MIN_CONFIDENCE_NO_INDICATORS
+    ml_is_confident_scam = (
+        not ml_is_benign and ml.indicators and ml_is_confident
+    )
+    if ml_is_confident_scam:
+        return ml
+
+    # In-distribution high-confidence ML verdict — trust it over loose keywords.
+    if ml_is_confident and not _is_non_latin_script(text):
+        return ml
+
+    if ml_is_benign:
+        return rule
+
+    if not ml.indicators or ml.confidence < 0.5:
+        return rule
+
+    return ml
+
+
 def classify_text(text: str, use_ml: bool = True) -> ScamClassification:
     """
     Main classification function called by API and LangGraph pipeline.
@@ -303,20 +425,30 @@ def classify_text(text: str, use_ml: bool = True) -> ScamClassification:
       2. Try the trained production ML models (TF-IDF / XGBoost).
       3. Try Zero-Shot NLI.
       4. If ML fails or is disabled, fall back to rule-based classification.
+
+    Every ML verdict is evidence-gated (see _gate_ml_verdict), and concrete
+    rule-based keyword hits override weak/uncertain ML outcomes (see
+    _resolve_rule_override).
     """
     if use_ml:
         # 1. Fine-tuned transformer (primary)
-        tf_result = TransformerScamClassifier.classify(text)
+        tf_result = _gate_ml_verdict(_resolve_rule_override(
+            TransformerScamClassifier.classify(text), _rule_based_evidence(text), text
+        ), text)
         if tf_result is not None:
             return tf_result
 
         # 2. Trained TF-IDF / XGBoost fallback
-        ml_result = TrainedScamClassifier.classify(text)
+        ml_result = _gate_ml_verdict(_resolve_rule_override(
+            TrainedScamClassifier.classify(text), _rule_based_evidence(text), text
+        ), text)
         if ml_result is not None:
             return ml_result
 
         # 3. Zero-shot if trained models missing
-        zs_result = ZeroShotScamClassifier.classify(text)
+        zs_result = _gate_ml_verdict(_resolve_rule_override(
+            ZeroShotScamClassifier.classify(text), _rule_based_evidence(text), text
+        ), text)
         if zs_result is not None:
             return zs_result
 

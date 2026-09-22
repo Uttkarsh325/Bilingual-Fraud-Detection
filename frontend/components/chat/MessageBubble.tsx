@@ -58,6 +58,10 @@ export default function MessageBubble({ message, sessionId, languageCode }: Mess
     setTranslating(true);
     try {
       const result = await translateText(message.content);
+      if (!result || result === message.content) {
+        toast.error("Translation returned no useful text.");
+        return;
+      }
       setTranslated(result);
     } catch (err: unknown) {
       const detail =
@@ -69,7 +73,7 @@ export default function MessageBubble({ message, sessionId, languageCode }: Mess
   };
 
   const showTranslate = !isUser && isNonEnglish(message.content);
-  const displayContent = translated ?? message.content;
+  const displayContent = translated || message.content;
 
   return (
     <motion.div

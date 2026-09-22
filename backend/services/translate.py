@@ -44,9 +44,18 @@ def _target_name(code: str) -> str:
 
 async def translate_text(text: str, target: str = "en-IN") -> str:
     """Translate `text` into `target` (BCP-47 code). Returns the translation."""
+    if not text or not text.strip():
+        raise ValueError("Nothing to translate.")
+
     # Full analyses can be long (tables, steps, citations) — give the LLM a
     # larger output cap than the default chat model uses.
-    chain = _TRANSLATE_PROMPT | get_llm(2048) | StrOutputParser()
-    return (
+    # reasoning_effort="low" keeps the (reasoning-first) model from spending
+    # the whole token budget thinking and returning an empty translation.
+    chain = _TRANSLATE_PROMPT | get_llm(4096, reasoning_effort="low") | StrOutputParser()
+    translated = (
         await chain.ainvoke({"text": text, "target": _target_name(target)})
     ).strip()
+
+    if not translated:
+        raise RuntimeError("The translator returned an empty response.")
+    return translated

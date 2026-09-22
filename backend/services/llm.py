@@ -10,13 +10,19 @@ from core.config import settings
 from core.logging import logger
 
 
-@lru_cache(maxsize=8)
-def get_llm(max_tokens: int = 1024) -> BaseChatModel:
+@lru_cache(maxsize=16)
+def get_llm(max_tokens: int = 1024, reasoning_effort: str = "low") -> BaseChatModel:
     """
     Returns a cached LangChain ChatModel instance.
     Provider is chosen from settings.llm_provider.
     A cache hit is returned for identical (provider, max_tokens) combos —
     so callers that need longer outputs (e.g. translation) pass a bigger cap.
+
+    `reasoning_effort` (groq only): reasoning-first models such as gpt-oss
+    spend output tokens (and therefore the `max_tokens` budget) thinking before
+    answering. On long inputs the default reasoning can swallow the whole cap
+    and return an empty/truncated answer, so we default to a low effort — the
+    model still reasons, but leaves budget for the actual response.
     """
     provider = settings.llm_provider.lower()
 
@@ -28,13 +34,17 @@ def get_llm(max_tokens: int = 1024) -> BaseChatModel:
             provider="groq",
             model=settings.groq_model,
             max_tokens=max_tokens,
+            reasoning_effort=reasoning_effort,
         )
-        return ChatGroq(
-            api_key=settings.groq_api_key,
-            model=settings.groq_model,
-            temperature=0.1,
-            max_tokens=max_tokens,
-        )
+        kwargs: dict = {
+            "api_key": settings.groq_api_key,
+            "model": settings.groq_model,
+            "temperature": 0.1,
+            "max_tokens": max_tokens,
+        }
+        if reasoning_effort:
+            kwargs["reasoning_effort"] = reasoning_effort
+        return ChatGroq(**kwargs)
 
     if provider == "ollama":
         from langchain_community.chat_models import ChatOllama
